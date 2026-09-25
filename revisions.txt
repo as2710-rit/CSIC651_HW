@@ -1,0 +1,71 @@
+commit 112d02527e71267766bccea48f449e20b5325e87
+Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
+Date:   Fri Sep 25 09:32:17 2026 -0400
+
+    Final version with added requirements.txt and pktsniffer_report.pdf. Removed unnecessary older files. Updated documentation and static files.
+
+commit ef8923087485c3de0dc4be5edff5dbd58b6af4df
+Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
+Date:   Fri Sep 25 04:38:09 2026 -0400
+
+    Final_version_pktsniffer
+
+commit bccc05ef02f768e16a92726ece72bed06dfa1840
+Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
+Date:   Fri Sep 25 04:33:17 2026 -0400
+
+    Final Version of the Packet Sniffer with Documentation
+
+commit 1c03b1cd53cac672bc6c146a86a9575ad17bda1e
+Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
+Date:   Fri Sep 25 03:58:52 2026 -0400
+
+    Multiple Versions of Packet Sniffer that Include Different Functionalities and Features. Version 2 Has added IP and Protocol Headers, Version 3 has Argument Parsers
+
+commit 4aaa08fefd5f5550241780faf234684d2280f665
+Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
+Date:   Wed Sep 23 01:00:34 2026 -0400
+
+    Added IP header information as well
+
+commit 268c98084b64e099af24efee592152ef138f3e64
+Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
+Date:   Tue Sep 22 23:52:14 2026 -0400
+
+    Added Args -r and -c with the Ethernet Header Summary
+
+commit a048e0f968def5717f1d530a7203d87f5dca0b40
+Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
+Date:   Tue Sep 22 23:38:43 2026 -0400
+
+    Creating the Pythonfile with argparse for pktsniffer
+
+commit 4c0df64d2d90430f6871848ecfb2b5f5f8bcd44d
+Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
+Date:   Tue Sep 22 09:10:32 2026 -0400
+
+    Modified files and added Test pcap file
+
+commit 1f6e6625714198e8c53b68a9b8390dd3d540a693
+Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
+Date:   Tue Sep 22 09:06:18 2026 -0400
+
+    Adding the sample pcap file for testing the packet sniffer code.
+
+commit aab3519a64b65d6442fe5edfa7fd579f41f8026b
+Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
+Date:   Mon Sep 21 09:47:03 2026 -0400
+
+    Modified
+
+commit bde882729dc48456643150406eed4ed079aa755a
+Author: Abdul Aleem Shaik Gadda <321455776+as2710-rit@users.noreply.github.com>
+Date:   Mon Sep 21 09:48:16 2026 -0400
+
+    Add initial README for Homework-1 in CSIC 651
+
+commit 15871b5e93c34a7be3605267053cd792571b062f
+Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
+Date:   Mon Sep 21 09:45:16 2026 -0400
+
+    Add user login authentication

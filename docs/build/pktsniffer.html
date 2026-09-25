@@ -107,7 +107,9 @@ pandas DataFrames.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="pktsniffer.normalize_tokens">
 <span class="sig-prename descclassname"><span class="pre">pktsniffer.</span></span><span class="sig-name descname"><span class="pre">normalize_tokens</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raw_tokens</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pktsniffer.html#normalize_tokens"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pktsniffer.normalize_tokens" title="Permalink to this definition">¶</a></dt>
-<dd><p>Strip a leading ‘-’ or ‘–’ from filter keywords.</p>
+<dd><p>Strip a leading ‘-’ or ‘–’ from filter arguments for c and n.
+c - read only the first N packets from the pcap file
+n - show only the first N packets that match the filter expression</p>
 <p>This allows both ‘-c’ and ‘–c’ style
 usage to be accepted.</p>
 </dd></dl>

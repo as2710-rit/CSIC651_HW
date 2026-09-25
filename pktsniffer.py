@@ -106,10 +106,12 @@ def read_packets(pcap_file, count=None):
 
 
 # ---------------------------------------------------------------------------
-# Filtering (tcpdump-style: port / ip / tcp / udp / icmp / net / host)
+# Filtering Arguments (-c or --c)
 # ---------------------------------------------------------------------------
 def normalize_tokens(raw_tokens):
-    """Strip a leading '-' or '--' from filter keywords.
+    """Strip a leading '-' or '--' from filter arguments for c and n.
+    c - read only the first N packets from the pcap file
+    n - show only the first N packets that match the filter expression
 
     This allows both '-c' and '--c' style
     usage to be accepted.

@@ -10,7 +10,8 @@ A simple tcpdump-style packet sniffer built on top of [Scapy](https://scapy.net/
 
 ## Code documentation
 
-The code documentation is provided in the `pktsniffer.html`. Please keep the `_static` and the `pktsniffer.html` in the same folder while opening the html to avoid errors with the CSS/JS components of styling. This documentation is generated through Sphinx.
+The code documentation is provided in the `pktsniffer_html/pktsniffer.html`. Please open the html only through the folder
+to avoid errors with the CSS/JS components of styling and sources. This documentation is generated through Sphinx.
 
 ## Installation
 
@@ -59,7 +60,7 @@ The filter expression is a sequence of one or more **primitives**, optionally co
 - If no connector is written between two clauses, `and` is assumed.
 - `net <addr>` without a `/<prefixlen>` defaults to a `/24`.
 - Flags of count and first n display should be written with a leading dash (`-c` and `--c` both work).
-- Flags for other filters like `tcp`, `udp`, `ip`, `icmp`, `port` shoulb be used without a leading dash.
+- Flags for other filters like `tcp`, `udp`, `ip`, `icmp`, `port` should be used without a leading dash.
 - If nothing to display, returns empty lists.
 
 ## Examples
