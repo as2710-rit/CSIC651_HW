@@ -1,3 +1,15 @@
+commit b4768e9129cd93c087bdbd870d4541464fac7989
+Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
+Date:   Fri Sep 25 09:52:53 2026 -0400
+
+    Updated log
+
+commit 3816bea626b24668f44fb1d36554c792e7d56ff8
+Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
+Date:   Fri Sep 25 09:52:02 2026 -0400
+
+    Updated Log before zipping
+
 commit bcd2652fb077774e11b326cdc2b3b134cdd01428
 Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
 Date:   Fri Sep 25 09:51:06 2026 -0400
@@ -73,3 +85,4 @@ Date:   Mon Sep 21 09:48:16 2026 -0400
 commit 15871b5e93c34a7be3605267053cd792571b062f
 Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
 Date:   Mon Sep 21 09:45:16 2026 -0400
+
