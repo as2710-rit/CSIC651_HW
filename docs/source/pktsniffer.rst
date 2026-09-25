@@ -1,7 +1,7 @@
-pktsniffer3 module
+pktsniffer module
 ===================
 
-.. automodule:: pktsniffer3
+.. automodule:: pktsniffer
    :members:
    :undoc-members:
    :show-inheritance:

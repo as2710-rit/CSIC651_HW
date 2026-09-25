@@ -10,7 +10,7 @@ Welcome to pktsniffer's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   pktsniffer3
+   pktsniffer
 
 
 
