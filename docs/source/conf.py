@@ -22,7 +22,7 @@ copyright = '2026, Abdul Aleem Shaik Gadda'
 author = 'Abdul Aleem Shaik Gadda'
 
 # The full version, including alpha/beta/rc tags
-release = '1.3'
+release = '1.0.0'
 
 
 # -- General configuration ---------------------------------------------------

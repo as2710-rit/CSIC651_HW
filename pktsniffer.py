@@ -1,20 +1,59 @@
-"""A simple tcpdump-style packet sniffer built on top of Scapy.
+"""A simple packet sniffer built on top of Scapy.
 
 Reads packets from a pcap file, optionally filters them using a small
 tcpdump-like expression language (port / ip / tcp / udp / icmp / arp /
 net / host, combinable with 'and', 'or', and 'not'), and prints Ethernet,
-IP, and transport-layer (TCP/UDP/ICMP) header information as pandas
-DataFrames.
+IP, and transport-layer (TCP/UDP/ICMP/ICMPv6) header information as
+pandas DataFrames.
 """
 import argparse
 import ipaddress
 
 import pandas as pd
 import scapy
-from scapy.all import ARP, ICMP, IP, IPv6, PcapReader, TCP, UDP
+from scapy.all import (
+    ARP,
+    ICMP,
+    ICMPv6DestUnreach,
+    ICMPv6EchoReply,
+    ICMPv6EchoRequest,
+    ICMPv6ND_NA,
+    ICMPv6ND_NS,
+    ICMPv6ND_RA,
+    ICMPv6ND_RS,
+    ICMPv6PacketTooBig,
+    ICMPv6TimeExceeded,
+    IP,
+    IPv6,
+    PcapReader,
+    TCP,
+    UDP,
+)
 
 SUPPORTED_PRIMITIVES = {"ip", "tcp", "udp", "icmp", "arp"}
 PRIMITIVES_WITH_ARG = {"port", "net", "host"}
+
+# The specific ICMPv6 message types this script recognizes. Used so that
+# the 'icmp' filter primitive matches ICMPv6 packets too, not just ICMP
+# (v4) ones.
+ICMPV6_MESSAGE_TYPES = (
+    ICMPv6EchoRequest,
+    ICMPv6EchoReply,
+    ICMPv6ND_NS,
+    ICMPv6ND_NA,
+    ICMPv6ND_RS,
+    ICMPv6ND_RA,
+    ICMPv6DestUnreach,
+    ICMPv6PacketTooBig,
+    ICMPv6TimeExceeded,
+)
+
+
+def is_icmp(pkt):
+    """Return True if `pkt` is an ICMP (v4) or a recognized ICMPv6 packet."""
+    if ICMP in pkt:
+        return True
+    return any(cls in pkt for cls in ICMPV6_MESSAGE_TYPES)
 
 
 def build_arg_parser():
@@ -42,7 +81,7 @@ def build_arg_parser():
     #   pktsniffer -r file.pcap udp or icmp
     #   pktsniffer -r file.pcap -n 5 tcp and port 80
     # argparse.REMAINDER is used (instead of nargs='*') so that tokens
-    # starting with a dash (e.g. "-net 192.168.1.0", as shown in some
+    # starting with a dash (e.g. "-host 192.168.1.0", as shown in some
     # examples) are still captured as part of the filter instead of
     # being rejected as unknown flags.
     parser.add_argument(
@@ -72,7 +111,7 @@ def read_packets(pcap_file, count=None):
 def normalize_tokens(raw_tokens):
     """Strip a leading '-' or '--' from filter keywords.
 
-    This allows both 'net 192.168.1.0' and '-net 192.168.1.0' style
+    This allows both '-c' and '--c' style
     usage to be accepted.
     """
     normalized = []
@@ -217,7 +256,7 @@ def eval_clause(pkt, clause):
     elif ctype == "udp":
         result = UDP in pkt
     elif ctype == "icmp":
-        result = ICMP in pkt
+        result = is_icmp(pkt)
     elif ctype == "arp":
         result = ARP in pkt
     elif ctype == "port":
@@ -342,7 +381,7 @@ def build_ip_dataframe(packets):
 
 
 def build_transport_dataframe(packets):
-    """Build a DataFrame of TCP / UDP / ICMP header fields for `packets`."""
+    """Build a DataFrame of TCP/UDP/ICMP/ICMPv6 header fields for packets."""
     data = {
         "protocol": [], "source_port": [], "destination_port": [],
         "sequence_number": [], "acknowledgment_number": [],
@@ -399,6 +438,79 @@ def build_transport_dataframe(packets):
             data["length_bytes"].append(None)
             data["icmp_type"].append(icmp_layer.type)
             data["icmp_code"].append(icmp_layer.code)
+        elif ICMPv6EchoRequest in pkt or ICMPv6EchoReply in pkt:
+            icmp6_layer = (
+                pkt[ICMPv6EchoRequest] if ICMPv6EchoRequest in pkt
+                else pkt[ICMPv6EchoReply]
+            )
+            data["protocol"].append("icmpv6")
+            data["source_port"].append(None)
+            data["destination_port"].append(None)
+            data["sequence_number"].append(getattr(icmp6_layer, "seq", None))
+            data["acknowledgment_number"].append(None)
+            data["header_length_bytes"].append(None)
+            data["flags"].append(None)
+            data["window_size"].append(None)
+            data["checksum"].append(icmp6_layer.cksum)
+            data["urgent_pointer"].append(None)
+            data["length_bytes"].append(None)
+            data["icmp_type"].append(icmp6_layer.type)
+            data["icmp_code"].append(icmp6_layer.code)
+        elif ICMPv6ND_NS in pkt or ICMPv6ND_NA in pkt:
+            icmp6_layer = (
+                pkt[ICMPv6ND_NS] if ICMPv6ND_NS in pkt else pkt[ICMPv6ND_NA]
+            )
+            data["protocol"].append("icmpv6")
+            data["source_port"].append(None)
+            data["destination_port"].append(None)
+            data["sequence_number"].append(None)  # ND messages have no seq.
+            data["acknowledgment_number"].append(None)
+            data["header_length_bytes"].append(None)
+            data["flags"].append(None)
+            data["window_size"].append(None)
+            data["checksum"].append(icmp6_layer.cksum)
+            data["urgent_pointer"].append(None)
+            data["length_bytes"].append(None)
+            data["icmp_type"].append(icmp6_layer.type)
+            data["icmp_code"].append(icmp6_layer.code)
+        elif ICMPv6ND_RS in pkt or ICMPv6ND_RA in pkt:
+            icmp6_layer = (
+                pkt[ICMPv6ND_RS] if ICMPv6ND_RS in pkt else pkt[ICMPv6ND_RA]
+            )
+            data["protocol"].append("icmpv6")
+            data["source_port"].append(None)
+            data["destination_port"].append(None)
+            data["sequence_number"].append(None)  # RS/RA have no seq.
+            data["acknowledgment_number"].append(None)
+            data["header_length_bytes"].append(None)
+            data["flags"].append(None)
+            data["window_size"].append(None)
+            data["checksum"].append(icmp6_layer.cksum)
+            data["urgent_pointer"].append(None)
+            data["length_bytes"].append(None)
+            data["icmp_type"].append(icmp6_layer.type)
+            data["icmp_code"].append(icmp6_layer.code)
+        elif (ICMPv6DestUnreach in pkt or ICMPv6PacketTooBig in pkt
+              or ICMPv6TimeExceeded in pkt):
+            if ICMPv6DestUnreach in pkt:
+                icmp6_layer = pkt[ICMPv6DestUnreach]
+            elif ICMPv6PacketTooBig in pkt:
+                icmp6_layer = pkt[ICMPv6PacketTooBig]
+            else:
+                icmp6_layer = pkt[ICMPv6TimeExceeded]
+            data["protocol"].append("icmpv6")
+            data["source_port"].append(None)
+            data["destination_port"].append(None)
+            data["sequence_number"].append(None)  # Error msgs have no seq.
+            data["acknowledgment_number"].append(None)
+            data["header_length_bytes"].append(None)
+            data["flags"].append(None)
+            data["window_size"].append(None)
+            data["checksum"].append(icmp6_layer.cksum)
+            data["urgent_pointer"].append(None)
+            data["length_bytes"].append(None)
+            data["icmp_type"].append(icmp6_layer.type)
+            data["icmp_code"].append(icmp6_layer.code)
 
     trans_df = pd.DataFrame(data)
     int_columns = [
@@ -453,7 +565,8 @@ def main():
     print("\n IP Header Information: \n")
     print(build_ip_dataframe(packets))
 
-    print("\n Encapsulated Packet Header Information (TCP / UDP / ICMP): \n")
+    print("\n Encapsulated Packet Header Information "
+          "(TCP / UDP / ICMP / ICMPv6): \n")
     with pd.option_context("display.max_columns", None, "display.width", None):
         print(build_transport_dataframe(packets))
 

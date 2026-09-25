@@ -1,4 +1,4 @@
-# pktsniffer3
+# pktsniffer
 
 A simple tcpdump-style packet sniffer built on top of [Scapy](https://scapy.net/). It reads packets from a `.pcap` file, optionally filters them using a small expression language, and prints Ethernet, IP, and transport-layer (TCP/UDP/ICMP) header information as formatted tables.
 
@@ -7,6 +7,10 @@ A simple tcpdump-style packet sniffer built on top of [Scapy](https://scapy.net/
 - Python 3.8+
 - [Scapy](https://scapy.net/)
 - [pandas](https://pandas.pydata.org/)
+
+## Code documentation
+
+The code documentation is provided in the `pktsniffer.html`. Please keep the `_static` and the `pktsniffer.html` in the same folder while opening the html to avoid errors with the CSS/JS components of styling. This documentation is generated through Sphinx.
 
 ## Installation
 
@@ -29,7 +33,7 @@ pip install scapy pandas
 The script is run from the command line with `python3`:
 
 ```bash
-python3 pktsniffer3.py -r <pcap_file> [-c <count>] [-n <num_matches>] [filter expression]
+python3 pktsniffer.py -r <pcap_file> [-c <count>] [-n <num_matches>] [filter expression]
 ```
 
 ### Arguments
@@ -54,62 +58,70 @@ The filter expression is a sequence of one or more **primitives**, optionally co
 
 - If no connector is written between two clauses, `and` is assumed.
 - `net <addr>` without a `/<prefixlen>` defaults to a `/24`.
-- Flags can be written with or without a leading dash (`port 80` and `-port 80` both work).
+- Flags of count and first n display should be written with a leading dash (`-c` and `--c` both work).
+- Flags for other filters like `tcp`, `udp`, `ip`, `icmp`, `port` shoulb be used without a leading dash.
+- If nothing to display, returns empty lists.
 
 ## Examples
 
 Read and display every packet in a capture:
 
 ```bash
-python3 pktsniffer3.py -r test_wifi.pcap
+python3 pktsniffer.py -r test_wifi.pcap
 ```
 
 Read only the first 50 packets from the file:
 
 ```bash
-python3 pktsniffer3.py -r test_wifi.pcap -c 50
+python3 pktsniffer.py -r test_wifi.pcap -c 50
 ```
 
 Show only packets on port 80 (HTTP):
 
 ```bash
-python3 pktsniffer3.py -r test_wifi.pcap port 80
+python3 pktsniffer.py -r test_wifi.pcap port 80
+```
+
+Show only top n packets returned after a filter query:
+
+```bash
+python3 pktsniffer.py -r test_wifi.pcap -n 20 port 443 
 ```
 
 Show only TCP packets destined for/from port 80:
 
 ```bash
-python3 pktsniffer3.py -r test_wifi.pcap tcp and port 80
+python3 pktsniffer.py -r test_wifi.pcap tcp and port 80
 ```
 
 Show all UDP or ICMP packets:
 
 ```bash
-python3 pktsniffer3.py -r test_wifi.pcap udp or icmp
+python3 pktsniffer.py -r test_wifi.pcap udp or icmp
 ```
 
 Show packets to/from a subnet (defaults to /24 if no prefix is given):
 
 ```bash
-python3 pktsniffer3.py -r test_wifi.pcap net 192.168.1.0
+python3 pktsniffer.py -r test_wifi.pcap net 192.168.1.0
 ```
 
 Show packets to/from a specific host:
 
 ```bash
-python3 pktsniffer3.py -r test_wifi.pcap host 192.168.1.15
+python3 pktsniffer.py -r test_wifi.pcap host 192.168.1.15
 ```
 
 Show non-TCP traffic:
 
 ```bash
-python3 pktsniffer3.py -r test_wifi.pcap not tcp
+python3 pktsniffer.py -r test_wifi.pcap not tcp
 ```
 
 Combine reading limits, filtering, and display limits — read only the first 500 packets from the file, filter for TCP traffic on port 80, but display only the first 5 matches:
 
 ```bash
-python3 pktsniffer3.py -r test_wifi.pcap -c 500 -n 5 tcp and port 80
+python3 pktsniffer.py -r test_wifi.pcap -c 500 -n 5 tcp and port 80
 ```
 
 ## Output
