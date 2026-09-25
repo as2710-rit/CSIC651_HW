@@ -18,7 +18,8 @@ to avoid errors with the CSS/JS components of styling and sources. This document
 No compilation step is required — this is a pure Python script. Just install the two third-party dependencies:
 
 ```bash
-pip install -r requirements.txt
+Suggested Python version >=3.10
+python -m pip install -r requirements.txt
 ```
 
 (If you're on a system with both Python 2 and 3, or multiple environments, use `pip3` instead of `pip` to be safe, or install inside a virtual environment:)
@@ -26,7 +27,7 @@ pip install -r requirements.txt
 ```bash
 python3 -m venv venv
 source venv/bin/activate        # on Windows: venv\Scripts\activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ## Running the script

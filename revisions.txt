@@ -1,3 +1,9 @@
+commit 088e6e777d0aefef058fcd1830d1d1e07cb9ba79
+Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
+Date:   Fri Sep 25 10:00:24 2026 -0400
+
+    Updated Read Me and Log
+
 commit b4768e9129cd93c087bdbd870d4541464fac7989
 Author: as2710-rit <321455776+as2710-rit@users.noreply.github.com>
 Date:   Fri Sep 25 09:52:53 2026 -0400
