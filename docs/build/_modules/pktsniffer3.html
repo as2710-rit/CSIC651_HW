@@ -1,0 +1,564 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pktsniffer3 &#8212; pktsniffer 1.3 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css" />
+    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for pktsniffer3</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;A simple tcpdump-style packet sniffer built on top of Scapy.</span>
+
+<span class="sd">Reads packets from a pcap file, optionally filters them using a small</span>
+<span class="sd">tcpdump-like expression language (port / ip / tcp / udp / icmp / arp /</span>
+<span class="sd">net / host, combinable with &#39;and&#39;, &#39;or&#39;, and &#39;not&#39;), and prints Ethernet,</span>
+<span class="sd">IP, and transport-layer (TCP/UDP/ICMP) header information as pandas</span>
+<span class="sd">DataFrames.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">ipaddress</span>
+
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">import</span> <span class="nn">scapy</span>
+<span class="kn">from</span> <span class="nn">scapy.all</span> <span class="kn">import</span> <span class="n">ARP</span><span class="p">,</span> <span class="n">ICMP</span><span class="p">,</span> <span class="n">IP</span><span class="p">,</span> <span class="n">IPv6</span><span class="p">,</span> <span class="n">PcapReader</span><span class="p">,</span> <span class="n">TCP</span><span class="p">,</span> <span class="n">UDP</span>
+
+<span class="n">SUPPORTED_PRIMITIVES</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;ip&quot;</span><span class="p">,</span> <span class="s2">&quot;tcp&quot;</span><span class="p">,</span> <span class="s2">&quot;udp&quot;</span><span class="p">,</span> <span class="s2">&quot;icmp&quot;</span><span class="p">,</span> <span class="s2">&quot;arp&quot;</span><span class="p">}</span>
+<span class="n">PRIMITIVES_WITH_ARG</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;port&quot;</span><span class="p">,</span> <span class="s2">&quot;net&quot;</span><span class="p">,</span> <span class="s2">&quot;host&quot;</span><span class="p">}</span>
+
+
+<div class="viewcode-block" id="build_arg_parser"><a class="viewcode-back" href="../pktsniffer3.html#pktsniffer3.build_arg_parser">[docs]</a><span class="k">def</span> <span class="nf">build_arg_parser</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build and return the command-line argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-r&quot;</span><span class="p">,</span> <span class="s2">&quot;--pcap_file&quot;</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Input pcap file to read&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-c&quot;</span><span class="p">,</span> <span class="s2">&quot;--count&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Only read the first N packets&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-n&quot;</span><span class="p">,</span> <span class="s2">&quot;--num_matches&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Only show the first N packets that match the filter &quot;</span>
+             <span class="s2">&quot;(does not affect how many packets are read from the &quot;</span>
+             <span class="s2">&quot;file - that is controlled by -c)&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># Everything after -r/-c/-n is treated as a tcpdump-style filter</span>
+    <span class="c1"># expression, e.g.:</span>
+    <span class="c1">#   pktsniffer -r file.pcap port 80</span>
+    <span class="c1">#   pktsniffer -r file.pcap tcp and port 80</span>
+    <span class="c1">#   pktsniffer -r file.pcap net 192.168.1.0</span>
+    <span class="c1">#   pktsniffer -r file.pcap udp or icmp</span>
+    <span class="c1">#   pktsniffer -r file.pcap -n 5 tcp and port 80</span>
+    <span class="c1"># argparse.REMAINDER is used (instead of nargs=&#39;*&#39;) so that tokens</span>
+    <span class="c1"># starting with a dash (e.g. &quot;-net 192.168.1.0&quot;, as shown in some</span>
+    <span class="c1"># examples) are still captured as part of the filter instead of</span>
+    <span class="c1"># being rejected as unknown flags.</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;expression&quot;</span><span class="p">,</span> <span class="n">nargs</span><span class="o">=</span><span class="n">argparse</span><span class="o">.</span><span class="n">REMAINDER</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Optional tcpdump-like filter expression &quot;</span>
+             <span class="s2">&quot;(port &lt;n&gt; | ip | tcp | udp | icmp | &quot;</span>
+             <span class="s2">&quot;net &lt;addr&gt;[/&lt;prefix&gt;], combinable with &#39;and&#39; / &#39;or&#39; / &quot;</span>
+             <span class="s2">&quot;&#39;not&#39;)&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">parser</span></div>
+
+
+<div class="viewcode-block" id="read_packets"><a class="viewcode-back" href="../pktsniffer3.html#pktsniffer3.read_packets">[docs]</a><span class="k">def</span> <span class="nf">read_packets</span><span class="p">(</span><span class="n">pcap_file</span><span class="p">,</span> <span class="n">count</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Read up to `count` packets from `pcap_file` (all, if None).&quot;&quot;&quot;</span>
+    <span class="n">packets</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">with</span> <span class="n">PcapReader</span><span class="p">(</span><span class="n">pcap_file</span><span class="p">)</span> <span class="k">as</span> <span class="n">pcap_reader</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">packet</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">pcap_reader</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">count</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="n">count</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="n">packets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">packet</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">packets</span></div>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Filtering (tcpdump-style: port / ip / tcp / udp / icmp / net / host)</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<div class="viewcode-block" id="normalize_tokens"><a class="viewcode-back" href="../pktsniffer3.html#pktsniffer3.normalize_tokens">[docs]</a><span class="k">def</span> <span class="nf">normalize_tokens</span><span class="p">(</span><span class="n">raw_tokens</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Strip a leading &#39;-&#39; or &#39;--&#39; from filter keywords.</span>
+
+<span class="sd">    This allows both &#39;net 192.168.1.0&#39; and &#39;-net 192.168.1.0&#39; style</span>
+<span class="sd">    usage to be accepted.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">normalized</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">raw_tokens</span><span class="p">:</span>
+        <span class="n">stripped</span> <span class="o">=</span> <span class="n">tok</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">)</span>
+        <span class="n">keyword</span> <span class="o">=</span> <span class="n">stripped</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="n">is_known_keyword</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">keyword</span> <span class="ow">in</span> <span class="n">SUPPORTED_PRIMITIVES</span>
+            <span class="ow">or</span> <span class="n">keyword</span> <span class="ow">in</span> <span class="n">PRIMITIVES_WITH_ARG</span>
+            <span class="ow">or</span> <span class="n">keyword</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;and&quot;</span><span class="p">,</span> <span class="s2">&quot;or&quot;</span><span class="p">,</span> <span class="s2">&quot;not&quot;</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">normalized</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">stripped</span> <span class="k">if</span> <span class="n">is_known_keyword</span> <span class="k">else</span> <span class="n">tok</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">normalized</span></div>
+
+
+<div class="viewcode-block" id="parse_filter_tokens"><a class="viewcode-back" href="../pktsniffer3.html#pktsniffer3.parse_filter_tokens">[docs]</a><span class="k">def</span> <span class="nf">parse_filter_tokens</span><span class="p">(</span><span class="n">tokens</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Parse a flat list of filter tokens into a list of clause dicts.</span>
+
+<span class="sd">    Grammar supported (case-insensitive):</span>
+
+<span class="sd">    .. code-block:: text</span>
+
+<span class="sd">        &lt;primitive&gt;      := ip | tcp | udp | icmp | arp</span>
+<span class="sd">        &lt;primitive-arg&gt;  := port &lt;number&gt; | net &lt;addr&gt;[/&lt;prefixlen&gt;] | host &lt;addr&gt;</span>
+<span class="sd">        &lt;clause&gt;         := [not] (&lt;primitive&gt; | &lt;primitive-arg&gt;)</span>
+<span class="sd">        &lt;expression&gt;     := &lt;clause&gt; [(and|or) &lt;clause&gt;]*</span>
+
+<span class="sd">    Clauses are combined left-to-right using the connector that</span>
+<span class="sd">    precedes them; if no connector is given between two clauses,</span>
+<span class="sd">    &#39;and&#39; is assumed (this mirrors how most simple pcap-filter</span>
+<span class="sd">    expressions are written).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">clauses</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">connector</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+    <span class="k">while</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">:</span>
+        <span class="n">tok</span> <span class="o">=</span> <span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;and&quot;</span><span class="p">,</span> <span class="s2">&quot;or&quot;</span><span class="p">):</span>
+            <span class="n">connector</span> <span class="o">=</span> <span class="n">tok</span>
+            <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">continue</span>
+
+        <span class="n">negate</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">tok</span> <span class="o">==</span> <span class="s2">&quot;not&quot;</span><span class="p">:</span>
+            <span class="n">negate</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="n">n</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;Filter expression ends with a dangling &#39;not&#39;&quot;</span><span class="p">)</span>
+            <span class="n">tok</span> <span class="o">=</span> <span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">SUPPORTED_PRIMITIVES</span><span class="p">:</span>
+            <span class="n">clauses</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                <span class="s2">&quot;connector&quot;</span><span class="p">:</span> <span class="n">connector</span><span class="p">,</span> <span class="s2">&quot;negate&quot;</span><span class="p">:</span> <span class="n">negate</span><span class="p">,</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="n">tok</span><span class="p">,</span> <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="p">})</span>
+            <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">elif</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">PRIMITIVES_WITH_ARG</span><span class="p">:</span>
+            <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="n">n</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Filter primitive &#39;</span><span class="si">{</span><span class="n">tok</span><span class="si">}</span><span class="s2">&#39; requires a value&quot;</span><span class="p">)</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">tok</span> <span class="o">==</span> <span class="s2">&quot;port&quot;</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">value</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&#39;port&#39; expects a number, got &#39;</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
+            <span class="n">clauses</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                <span class="s2">&quot;connector&quot;</span><span class="p">:</span> <span class="n">connector</span><span class="p">,</span> <span class="s2">&quot;negate&quot;</span><span class="p">:</span> <span class="n">negate</span><span class="p">,</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="n">tok</span><span class="p">,</span> <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">,</span>
+            <span class="p">})</span>
+            <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported filter token: &#39;</span><span class="si">{</span><span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="si">}</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
+
+        <span class="n">connector</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">return</span> <span class="n">clauses</span></div>
+
+
+<span class="k">def</span> <span class="nf">_get_ip_addrs</span><span class="p">(</span><span class="n">pkt</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return (src, dst) IP-like addresses for IPv4, IPv6, or ARP packets.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">IP</span> <span class="ow">in</span> <span class="n">pkt</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">pkt</span><span class="p">[</span><span class="n">IP</span><span class="p">]</span><span class="o">.</span><span class="n">src</span><span class="p">,</span> <span class="n">pkt</span><span class="p">[</span><span class="n">IP</span><span class="p">]</span><span class="o">.</span><span class="n">dst</span>
+    <span class="k">if</span> <span class="n">IPv6</span> <span class="ow">in</span> <span class="n">pkt</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">pkt</span><span class="p">[</span><span class="n">IPv6</span><span class="p">]</span><span class="o">.</span><span class="n">src</span><span class="p">,</span> <span class="n">pkt</span><span class="p">[</span><span class="n">IPv6</span><span class="p">]</span><span class="o">.</span><span class="n">dst</span>
+    <span class="k">if</span> <span class="n">ARP</span> <span class="ow">in</span> <span class="n">pkt</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">pkt</span><span class="p">[</span><span class="n">ARP</span><span class="p">]</span><span class="o">.</span><span class="n">psrc</span><span class="p">,</span> <span class="n">pkt</span><span class="p">[</span><span class="n">ARP</span><span class="p">]</span><span class="o">.</span><span class="n">pdst</span>
+    <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+
+
+<div class="viewcode-block" id="match_net"><a class="viewcode-back" href="../pktsniffer3.html#pktsniffer3.match_net">[docs]</a><span class="k">def</span> <span class="nf">match_net</span><span class="p">(</span><span class="n">pkt</span><span class="p">,</span> <span class="n">net_str</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return True if either endpoint of `pkt` falls within `net_str`.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="s2">&quot;/&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">net_str</span><span class="p">:</span>
+        <span class="c1"># No prefix length given: default to a /24, a reasonable</span>
+        <span class="c1"># assumption for typical IPv4 &quot;net&quot; filters used in this</span>
+        <span class="c1"># assignment.</span>
+        <span class="n">net_str</span> <span class="o">=</span> <span class="n">net_str</span> <span class="o">+</span> <span class="s2">&quot;/24&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">network</span> <span class="o">=</span> <span class="n">ipaddress</span><span class="o">.</span><span class="n">ip_network</span><span class="p">(</span><span class="n">net_str</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="n">src</span><span class="p">,</span> <span class="n">dst</span> <span class="o">=</span> <span class="n">_get_ip_addrs</span><span class="p">(</span><span class="n">pkt</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">addr</span> <span class="ow">in</span> <span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">dst</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">addr</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">ipaddress</span><span class="o">.</span><span class="n">ip_address</span><span class="p">(</span><span class="n">addr</span><span class="p">)</span> <span class="ow">in</span> <span class="n">network</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">continue</span>
+    <span class="k">return</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="match_host"><a class="viewcode-back" href="../pktsniffer3.html#pktsniffer3.match_host">[docs]</a><span class="k">def</span> <span class="nf">match_host</span><span class="p">(</span><span class="n">pkt</span><span class="p">,</span> <span class="n">host_str</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return True if `host_str` matches the source or destination of pkt.&quot;&quot;&quot;</span>
+    <span class="n">src</span><span class="p">,</span> <span class="n">dst</span> <span class="o">=</span> <span class="n">_get_ip_addrs</span><span class="p">(</span><span class="n">pkt</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">host_str</span> <span class="ow">in</span> <span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">dst</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="match_port"><a class="viewcode-back" href="../pktsniffer3.html#pktsniffer3.match_port">[docs]</a><span class="k">def</span> <span class="nf">match_port</span><span class="p">(</span><span class="n">pkt</span><span class="p">,</span> <span class="n">port_num</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return True if `port_num` matches the source or destination port.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">TCP</span> <span class="ow">in</span> <span class="n">pkt</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">pkt</span><span class="p">[</span><span class="n">TCP</span><span class="p">]</span><span class="o">.</span><span class="n">sport</span> <span class="o">==</span> <span class="n">port_num</span> <span class="ow">or</span> <span class="n">pkt</span><span class="p">[</span><span class="n">TCP</span><span class="p">]</span><span class="o">.</span><span class="n">dport</span> <span class="o">==</span> <span class="n">port_num</span>
+    <span class="k">if</span> <span class="n">UDP</span> <span class="ow">in</span> <span class="n">pkt</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">pkt</span><span class="p">[</span><span class="n">UDP</span><span class="p">]</span><span class="o">.</span><span class="n">sport</span> <span class="o">==</span> <span class="n">port_num</span> <span class="ow">or</span> <span class="n">pkt</span><span class="p">[</span><span class="n">UDP</span><span class="p">]</span><span class="o">.</span><span class="n">dport</span> <span class="o">==</span> <span class="n">port_num</span>
+    <span class="k">return</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="eval_clause"><a class="viewcode-back" href="../pktsniffer3.html#pktsniffer3.eval_clause">[docs]</a><span class="k">def</span> <span class="nf">eval_clause</span><span class="p">(</span><span class="n">pkt</span><span class="p">,</span> <span class="n">clause</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Evaluate a single filter clause dict against a packet.&quot;&quot;&quot;</span>
+    <span class="n">ctype</span> <span class="o">=</span> <span class="n">clause</span><span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">]</span>
+    <span class="n">value</span> <span class="o">=</span> <span class="n">clause</span><span class="p">[</span><span class="s2">&quot;value&quot;</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">ctype</span> <span class="o">==</span> <span class="s2">&quot;ip&quot;</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">IP</span> <span class="ow">in</span> <span class="n">pkt</span>
+    <span class="k">elif</span> <span class="n">ctype</span> <span class="o">==</span> <span class="s2">&quot;tcp&quot;</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">TCP</span> <span class="ow">in</span> <span class="n">pkt</span>
+    <span class="k">elif</span> <span class="n">ctype</span> <span class="o">==</span> <span class="s2">&quot;udp&quot;</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">UDP</span> <span class="ow">in</span> <span class="n">pkt</span>
+    <span class="k">elif</span> <span class="n">ctype</span> <span class="o">==</span> <span class="s2">&quot;icmp&quot;</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">ICMP</span> <span class="ow">in</span> <span class="n">pkt</span>
+    <span class="k">elif</span> <span class="n">ctype</span> <span class="o">==</span> <span class="s2">&quot;arp&quot;</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">ARP</span> <span class="ow">in</span> <span class="n">pkt</span>
+    <span class="k">elif</span> <span class="n">ctype</span> <span class="o">==</span> <span class="s2">&quot;port&quot;</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">match_port</span><span class="p">(</span><span class="n">pkt</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">ctype</span> <span class="o">==</span> <span class="s2">&quot;net&quot;</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">match_net</span><span class="p">(</span><span class="n">pkt</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">ctype</span> <span class="o">==</span> <span class="s2">&quot;host&quot;</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">match_host</span><span class="p">(</span><span class="n">pkt</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="k">if</span> <span class="n">clause</span><span class="p">[</span><span class="s2">&quot;negate&quot;</span><span class="p">]:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">result</span>
+    <span class="k">return</span> <span class="n">result</span></div>
+
+
+<div class="viewcode-block" id="matches_filter"><a class="viewcode-back" href="../pktsniffer3.html#pktsniffer3.matches_filter">[docs]</a><span class="k">def</span> <span class="nf">matches_filter</span><span class="p">(</span><span class="n">pkt</span><span class="p">,</span> <span class="n">clauses</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return True if `pkt` satisfies the parsed filter `clauses`.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">clauses</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">eval_clause</span><span class="p">(</span><span class="n">pkt</span><span class="p">,</span> <span class="n">clauses</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">for</span> <span class="n">clause</span> <span class="ow">in</span> <span class="n">clauses</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">eval_clause</span><span class="p">(</span><span class="n">pkt</span><span class="p">,</span> <span class="n">clause</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">clause</span><span class="p">[</span><span class="s2">&quot;connector&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;or&quot;</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">result</span> <span class="ow">or</span> <span class="n">r</span>
+        <span class="k">else</span><span class="p">:</span>  <span class="c1"># default connector is &#39;and&#39;</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">result</span> <span class="ow">and</span> <span class="n">r</span>
+    <span class="k">return</span> <span class="n">result</span></div>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Header extraction / reporting</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<div class="viewcode-block" id="build_ethernet_dataframe"><a class="viewcode-back" href="../pktsniffer3.html#pktsniffer3.build_ethernet_dataframe">[docs]</a><span class="k">def</span> <span class="nf">build_ethernet_dataframe</span><span class="p">(</span><span class="n">packets</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a DataFrame of Ethernet header fields for `packets`.&quot;&quot;&quot;</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;packet_size_bytes&quot;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s2">&quot;destination_mac_address&quot;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s2">&quot;source_mac_address&quot;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s2">&quot;ether_type&quot;</span><span class="p">:</span> <span class="p">[],</span>
+    <span class="p">}</span>
+    <span class="k">for</span> <span class="n">pkt</span> <span class="ow">in</span> <span class="n">packets</span><span class="p">:</span>
+        <span class="n">has_ether</span> <span class="o">=</span> <span class="s2">&quot;Ether&quot;</span> <span class="ow">in</span> <span class="n">pkt</span>
+        <span class="n">data</span><span class="p">[</span><span class="s2">&quot;packet_size_bytes&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">pkt</span><span class="p">))</span>
+        <span class="n">data</span><span class="p">[</span><span class="s2">&quot;destination_mac_address&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="n">pkt</span><span class="p">[</span><span class="s2">&quot;Ether&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">dst</span> <span class="k">if</span> <span class="n">has_ether</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">data</span><span class="p">[</span><span class="s2">&quot;source_mac_address&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="n">pkt</span><span class="p">[</span><span class="s2">&quot;Ether&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">src</span> <span class="k">if</span> <span class="n">has_ether</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">data</span><span class="p">[</span><span class="s2">&quot;ether_type&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="n">scapy</span><span class="o">.</span><span class="n">layers</span><span class="o">.</span><span class="n">l2</span><span class="o">.</span><span class="n">ETHER_TYPES</span><span class="p">[</span><span class="n">pkt</span><span class="p">[</span><span class="s2">&quot;Ether&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">type</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">has_ether</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="build_ip_dataframe"><a class="viewcode-back" href="../pktsniffer3.html#pktsniffer3.build_ip_dataframe">[docs]</a><span class="k">def</span> <span class="nf">build_ip_dataframe</span><span class="p">(</span><span class="n">packets</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a DataFrame of IPv4 / IPv6 / ARP header fields for `packets`.&quot;&quot;&quot;</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;version&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;header_length_bytes&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;Type of Service&quot;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s2">&quot;total_length_bytes&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;identification&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;flags&quot;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s2">&quot;fragment_offset&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;time_to_live&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;protocol&quot;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s2">&quot;header_checksum&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;source_ip_address&quot;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s2">&quot;destination_ip_address&quot;</span><span class="p">:</span> <span class="p">[],</span>
+    <span class="p">}</span>
+
+    <span class="k">for</span> <span class="n">pkt</span> <span class="ow">in</span> <span class="n">packets</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">IP</span> <span class="ow">in</span> <span class="n">pkt</span><span class="p">:</span>
+            <span class="n">ip_layer</span> <span class="o">=</span> <span class="n">pkt</span><span class="p">[</span><span class="n">IP</span><span class="p">]</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;version&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ip_layer</span><span class="o">.</span><span class="n">version</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;header_length_bytes&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ip_layer</span><span class="o">.</span><span class="n">ihl</span> <span class="o">*</span> <span class="mi">4</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;Type of Service&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ip_layer</span><span class="o">.</span><span class="n">tos</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;total_length_bytes&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ip_layer</span><span class="o">.</span><span class="n">len</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;identification&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ip_layer</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;flags&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ip_layer</span><span class="o">.</span><span class="n">flags</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;fragment_offset&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ip_layer</span><span class="o">.</span><span class="n">frag</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;time_to_live&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ip_layer</span><span class="o">.</span><span class="n">ttl</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;protocol&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">IP</span><span class="p">(</span><span class="n">proto</span><span class="o">=</span><span class="n">ip_layer</span><span class="o">.</span><span class="n">proto</span><span class="p">)</span><span class="o">.</span><span class="n">sprintf</span><span class="p">(</span><span class="s2">&quot;%IP.proto%&quot;</span><span class="p">))</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;header_checksum&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ip_layer</span><span class="o">.</span><span class="n">chksum</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;source_ip_address&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ip_layer</span><span class="o">.</span><span class="n">src</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;destination_ip_address&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ip_layer</span><span class="o">.</span><span class="n">dst</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">IPv6</span> <span class="ow">in</span> <span class="n">pkt</span><span class="p">:</span>
+            <span class="n">ipv6_layer</span> <span class="o">=</span> <span class="n">pkt</span><span class="p">[</span><span class="n">IPv6</span><span class="p">]</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;version&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ipv6_layer</span><span class="o">.</span><span class="n">version</span><span class="p">)</span>
+            <span class="c1"># IPv6 header is always fixed at 40 bytes.</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;header_length_bytes&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">40</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;Type of Service&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ipv6_layer</span><span class="o">.</span><span class="n">tc</span><span class="p">)</span>
+            <span class="c1"># Total length = payload + fixed header.</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;total_length_bytes&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ipv6_layer</span><span class="o">.</span><span class="n">plen</span> <span class="o">+</span> <span class="mi">40</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;identification&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>  <span class="c1"># No such field in IPv6.</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;flags&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>  <span class="c1"># No such field in IPv6.</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;fragment_offset&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>  <span class="c1"># No such field in IPv6.</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;time_to_live&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ipv6_layer</span><span class="o">.</span><span class="n">hlim</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;protocol&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">IP</span><span class="p">(</span><span class="n">proto</span><span class="o">=</span><span class="n">ipv6_layer</span><span class="o">.</span><span class="n">nh</span><span class="p">)</span><span class="o">.</span><span class="n">sprintf</span><span class="p">(</span><span class="s2">&quot;%IP.proto%&quot;</span><span class="p">))</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;header_checksum&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>  <span class="c1"># No such field in IPv6.</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;source_ip_address&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ipv6_layer</span><span class="o">.</span><span class="n">src</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;destination_ip_address&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ipv6_layer</span><span class="o">.</span><span class="n">dst</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">ARP</span> <span class="ow">in</span> <span class="n">pkt</span><span class="p">:</span>
+            <span class="n">arp_layer</span> <span class="o">=</span> <span class="n">pkt</span><span class="p">[</span><span class="n">ARP</span><span class="p">]</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;version&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>  <span class="c1"># ARP has no IP version.</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;header_length_bytes&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>  <span class="c1"># No IP header.</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;Type of Service&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;total_length_bytes&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;identification&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;flags&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;fragment_offset&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;time_to_live&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;protocol&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;arp&quot;</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;header_checksum&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;source_ip_address&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arp_layer</span><span class="o">.</span><span class="n">psrc</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;destination_ip_address&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arp_layer</span><span class="o">.</span><span class="n">pdst</span><span class="p">)</span>
+
+    <span class="n">ip_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="n">int_columns</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;version&quot;</span><span class="p">,</span> <span class="s2">&quot;header_length_bytes&quot;</span><span class="p">,</span> <span class="s2">&quot;Type of Service&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;total_length_bytes&quot;</span><span class="p">,</span> <span class="s2">&quot;identification&quot;</span><span class="p">,</span> <span class="s2">&quot;fragment_offset&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;time_to_live&quot;</span><span class="p">,</span> <span class="s2">&quot;header_checksum&quot;</span><span class="p">,</span>
+    <span class="p">]</span>
+    <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">int_columns</span><span class="p">:</span>
+        <span class="n">ip_df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">ip_df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">&quot;Int64&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ip_df</span></div>
+
+
+<div class="viewcode-block" id="build_transport_dataframe"><a class="viewcode-back" href="../pktsniffer3.html#pktsniffer3.build_transport_dataframe">[docs]</a><span class="k">def</span> <span class="nf">build_transport_dataframe</span><span class="p">(</span><span class="n">packets</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a DataFrame of TCP / UDP / ICMP header fields for `packets`.&quot;&quot;&quot;</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;protocol&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;source_port&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;destination_port&quot;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s2">&quot;sequence_number&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;acknowledgment_number&quot;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s2">&quot;header_length_bytes&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;flags&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;window_size&quot;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s2">&quot;checksum&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;urgent_pointer&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;length_bytes&quot;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s2">&quot;icmp_type&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;icmp_code&quot;</span><span class="p">:</span> <span class="p">[],</span>
+    <span class="p">}</span>
+
+    <span class="k">for</span> <span class="n">pkt</span> <span class="ow">in</span> <span class="n">packets</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">TCP</span> <span class="ow">in</span> <span class="n">pkt</span><span class="p">:</span>
+            <span class="n">tcp_layer</span> <span class="o">=</span> <span class="n">pkt</span><span class="p">[</span><span class="n">TCP</span><span class="p">]</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;protocol&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;tcp&quot;</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;source_port&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tcp_layer</span><span class="o">.</span><span class="n">sport</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;destination_port&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tcp_layer</span><span class="o">.</span><span class="n">dport</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;sequence_number&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tcp_layer</span><span class="o">.</span><span class="n">seq</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;acknowledgment_number&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tcp_layer</span><span class="o">.</span><span class="n">ack</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;header_length_bytes&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">tcp_layer</span><span class="o">.</span><span class="n">dataofs</span> <span class="o">*</span> <span class="mi">4</span> <span class="k">if</span> <span class="n">tcp_layer</span><span class="o">.</span><span class="n">dataofs</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;flags&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">tcp_layer</span><span class="o">.</span><span class="n">flags</span><span class="p">))</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;window_size&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tcp_layer</span><span class="o">.</span><span class="n">window</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;checksum&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tcp_layer</span><span class="o">.</span><span class="n">chksum</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;urgent_pointer&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tcp_layer</span><span class="o">.</span><span class="n">urgptr</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;length_bytes&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;icmp_type&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;icmp_code&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">UDP</span> <span class="ow">in</span> <span class="n">pkt</span><span class="p">:</span>
+            <span class="n">udp_layer</span> <span class="o">=</span> <span class="n">pkt</span><span class="p">[</span><span class="n">UDP</span><span class="p">]</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;protocol&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;udp&quot;</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;source_port&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">udp_layer</span><span class="o">.</span><span class="n">sport</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;destination_port&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">udp_layer</span><span class="o">.</span><span class="n">dport</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;sequence_number&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;acknowledgment_number&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="c1"># UDP header is always fixed at 8 bytes.</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;header_length_bytes&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">8</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;flags&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;window_size&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;checksum&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">udp_layer</span><span class="o">.</span><span class="n">chksum</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;urgent_pointer&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;length_bytes&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">udp_layer</span><span class="o">.</span><span class="n">len</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;icmp_type&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;icmp_code&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">ICMP</span> <span class="ow">in</span> <span class="n">pkt</span><span class="p">:</span>
+            <span class="n">icmp_layer</span> <span class="o">=</span> <span class="n">pkt</span><span class="p">[</span><span class="n">ICMP</span><span class="p">]</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;protocol&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;icmp&quot;</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;source_port&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;destination_port&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;sequence_number&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">icmp_layer</span><span class="p">,</span> <span class="s2">&quot;seq&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;acknowledgment_number&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;header_length_bytes&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;flags&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;window_size&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;checksum&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">icmp_layer</span><span class="o">.</span><span class="n">chksum</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;urgent_pointer&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;length_bytes&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;icmp_type&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">icmp_layer</span><span class="o">.</span><span class="n">type</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;icmp_code&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">icmp_layer</span><span class="o">.</span><span class="n">code</span><span class="p">)</span>
+
+    <span class="n">trans_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="n">int_columns</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;source_port&quot;</span><span class="p">,</span> <span class="s2">&quot;destination_port&quot;</span><span class="p">,</span> <span class="s2">&quot;sequence_number&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;acknowledgment_number&quot;</span><span class="p">,</span> <span class="s2">&quot;header_length_bytes&quot;</span><span class="p">,</span> <span class="s2">&quot;window_size&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;checksum&quot;</span><span class="p">,</span> <span class="s2">&quot;urgent_pointer&quot;</span><span class="p">,</span> <span class="s2">&quot;length_bytes&quot;</span><span class="p">,</span> <span class="s2">&quot;icmp_type&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;icmp_code&quot;</span><span class="p">,</span>
+    <span class="p">]</span>
+    <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">int_columns</span><span class="p">:</span>
+        <span class="n">trans_df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">trans_df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">&quot;Int64&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">trans_df</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../pktsniffer3.html#pktsniffer3.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Entry point: parse args, read, filter, and print packet headers.&quot;&quot;&quot;</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">build_arg_parser</span><span class="p">()</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="n">packets</span> <span class="o">=</span> <span class="n">read_packets</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">pcap_file</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">count</span><span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2"> Total packets read:&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">packets</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">count</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2"> Only the first&quot;</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">count</span><span class="p">,</span> <span class="s2">&quot;packets were read.&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;All packets were read from the pcap file.&quot;</span><span class="p">)</span>
+
+    <span class="n">filter_tokens</span> <span class="o">=</span> <span class="n">normalize_tokens</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">expression</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">filter_clauses</span> <span class="o">=</span> <span class="n">parse_filter_tokens</span><span class="p">(</span><span class="n">filter_tokens</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="n">build_arg_parser</span><span class="p">()</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">))</span>
+        <span class="k">return</span>  <span class="c1"># pragma: no cover - parser.error() exits the process.</span>
+
+    <span class="k">if</span> <span class="n">filter_clauses</span><span class="p">:</span>
+        <span class="n">packets</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">pkt</span> <span class="k">for</span> <span class="n">pkt</span> <span class="ow">in</span> <span class="n">packets</span> <span class="k">if</span> <span class="n">matches_filter</span><span class="p">(</span><span class="n">pkt</span><span class="p">,</span> <span class="n">filter_clauses</span><span class="p">)</span>
+        <span class="p">]</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2"> Filter applied:&quot;</span><span class="p">,</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">filter_tokens</span><span class="p">))</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot; Packets matching filter:&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">packets</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">num_matches</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">total_matches</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">packets</span><span class="p">)</span>
+        <span class="n">packets</span> <span class="o">=</span> <span class="n">packets</span><span class="p">[:</span><span class="n">args</span><span class="o">.</span><span class="n">num_matches</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">total_matches</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">packets</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot; Showing only the first </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">num_matches</span><span class="si">}</span><span class="s2"> matching &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;packets (of </span><span class="si">{</span><span class="n">total_matches</span><span class="si">}</span><span class="s2"> total matches).&quot;</span>
+            <span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2"> Ethernet Header Information: </span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">build_ethernet_dataframe</span><span class="p">(</span><span class="n">packets</span><span class="p">))</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2"> IP Header Information: </span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">build_ip_dataframe</span><span class="p">(</span><span class="n">packets</span><span class="p">))</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2"> Encapsulated Packet Header Information (TCP / UDP / ICMP): </span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">pd</span><span class="o">.</span><span class="n">option_context</span><span class="p">(</span><span class="s2">&quot;display.max_columns&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;display.width&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">build_transport_dataframe</span><span class="p">(</span><span class="n">packets</span><span class="p">))</span></div>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">pktsniffer</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../pktsniffer3.html">pktsniffer3 module</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2026, Abdul Aleem Shaik Gadda.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.0.2</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

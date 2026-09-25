@@ -1,0 +1,205 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+    <title>pktsniffer3 module &#8212; pktsniffer 1.3 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css" />
+    <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="_static/doctools.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Welcome to pktsniffer’s documentation!" href="index.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="module-pktsniffer3">
+<span id="pktsniffer3-module"></span><h1>pktsniffer3 module<a class="headerlink" href="#module-pktsniffer3" title="Permalink to this heading">¶</a></h1>
+<p>A simple tcpdump-style packet sniffer built on top of Scapy.</p>
+<p>Reads packets from a pcap file, optionally filters them using a small
+tcpdump-like expression language (port / ip / tcp / udp / icmp / arp /
+net / host, combinable with ‘and’, ‘or’, and ‘not’), and prints Ethernet,
+IP, and transport-layer (TCP/UDP/ICMP) header information as pandas
+DataFrames.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="pktsniffer3.build_arg_parser">
+<span class="sig-prename descclassname"><span class="pre">pktsniffer3.</span></span><span class="sig-name descname"><span class="pre">build_arg_parser</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pktsniffer3.html#build_arg_parser"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pktsniffer3.build_arg_parser" title="Permalink to this definition">¶</a></dt>
+<dd><p>Build and return the command-line argument parser.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pktsniffer3.build_ethernet_dataframe">
+<span class="sig-prename descclassname"><span class="pre">pktsniffer3.</span></span><span class="sig-name descname"><span class="pre">build_ethernet_dataframe</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">packets</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pktsniffer3.html#build_ethernet_dataframe"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pktsniffer3.build_ethernet_dataframe" title="Permalink to this definition">¶</a></dt>
+<dd><p>Build a DataFrame of Ethernet header fields for <cite>packets</cite>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pktsniffer3.build_ip_dataframe">
+<span class="sig-prename descclassname"><span class="pre">pktsniffer3.</span></span><span class="sig-name descname"><span class="pre">build_ip_dataframe</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">packets</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pktsniffer3.html#build_ip_dataframe"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pktsniffer3.build_ip_dataframe" title="Permalink to this definition">¶</a></dt>
+<dd><p>Build a DataFrame of IPv4 / IPv6 / ARP header fields for <cite>packets</cite>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pktsniffer3.build_transport_dataframe">
+<span class="sig-prename descclassname"><span class="pre">pktsniffer3.</span></span><span class="sig-name descname"><span class="pre">build_transport_dataframe</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">packets</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pktsniffer3.html#build_transport_dataframe"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pktsniffer3.build_transport_dataframe" title="Permalink to this definition">¶</a></dt>
+<dd><p>Build a DataFrame of TCP / UDP / ICMP header fields for <cite>packets</cite>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pktsniffer3.eval_clause">
+<span class="sig-prename descclassname"><span class="pre">pktsniffer3.</span></span><span class="sig-name descname"><span class="pre">eval_clause</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pkt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clause</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pktsniffer3.html#eval_clause"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pktsniffer3.eval_clause" title="Permalink to this definition">¶</a></dt>
+<dd><p>Evaluate a single filter clause dict against a packet.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pktsniffer3.main">
+<span class="sig-prename descclassname"><span class="pre">pktsniffer3.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pktsniffer3.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pktsniffer3.main" title="Permalink to this definition">¶</a></dt>
+<dd><p>Entry point: parse args, read, filter, and print packet headers.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pktsniffer3.match_host">
+<span class="sig-prename descclassname"><span class="pre">pktsniffer3.</span></span><span class="sig-name descname"><span class="pre">match_host</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pkt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">host_str</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pktsniffer3.html#match_host"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pktsniffer3.match_host" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return True if <cite>host_str</cite> matches the source or destination of pkt.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pktsniffer3.match_net">
+<span class="sig-prename descclassname"><span class="pre">pktsniffer3.</span></span><span class="sig-name descname"><span class="pre">match_net</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pkt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">net_str</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pktsniffer3.html#match_net"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pktsniffer3.match_net" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return True if either endpoint of <cite>pkt</cite> falls within <cite>net_str</cite>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pktsniffer3.match_port">
+<span class="sig-prename descclassname"><span class="pre">pktsniffer3.</span></span><span class="sig-name descname"><span class="pre">match_port</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pkt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">port_num</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pktsniffer3.html#match_port"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pktsniffer3.match_port" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return True if <cite>port_num</cite> matches the source or destination port.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pktsniffer3.matches_filter">
+<span class="sig-prename descclassname"><span class="pre">pktsniffer3.</span></span><span class="sig-name descname"><span class="pre">matches_filter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pkt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clauses</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pktsniffer3.html#matches_filter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pktsniffer3.matches_filter" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return True if <cite>pkt</cite> satisfies the parsed filter <cite>clauses</cite>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pktsniffer3.normalize_tokens">
+<span class="sig-prename descclassname"><span class="pre">pktsniffer3.</span></span><span class="sig-name descname"><span class="pre">normalize_tokens</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raw_tokens</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pktsniffer3.html#normalize_tokens"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pktsniffer3.normalize_tokens" title="Permalink to this definition">¶</a></dt>
+<dd><p>Strip a leading ‘-’ or ‘–’ from filter keywords.</p>
+<p>This allows both ‘net 192.168.1.0’ and ‘-net 192.168.1.0’ style
+usage to be accepted.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pktsniffer3.parse_filter_tokens">
+<span class="sig-prename descclassname"><span class="pre">pktsniffer3.</span></span><span class="sig-name descname"><span class="pre">parse_filter_tokens</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokens</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pktsniffer3.html#parse_filter_tokens"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pktsniffer3.parse_filter_tokens" title="Permalink to this definition">¶</a></dt>
+<dd><p>Parse a flat list of filter tokens into a list of clause dicts.</p>
+<p>Grammar supported (case-insensitive):</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>&lt;primitive&gt;      := ip | tcp | udp | icmp | arp
+&lt;primitive-arg&gt;  := port &lt;number&gt; | net &lt;addr&gt;[/&lt;prefixlen&gt;] | host &lt;addr&gt;
+&lt;clause&gt;         := [not] (&lt;primitive&gt; | &lt;primitive-arg&gt;)
+&lt;expression&gt;     := &lt;clause&gt; [(and|or) &lt;clause&gt;]*
+</pre></div>
+</div>
+<p>Clauses are combined left-to-right using the connector that
+precedes them; if no connector is given between two clauses,
+‘and’ is assumed (this mirrors how most simple pcap-filter
+expressions are written).</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pktsniffer3.read_packets">
+<span class="sig-prename descclassname"><span class="pre">pktsniffer3.</span></span><span class="sig-name descname"><span class="pre">read_packets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pcap_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pktsniffer3.html#read_packets"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pktsniffer3.read_packets" title="Permalink to this definition">¶</a></dt>
+<dd><p>Read up to <cite>count</cite> packets from <cite>pcap_file</cite> (all, if None).</p>
+</dd></dl>
+
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">pktsniffer</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">pktsniffer3 module</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">Welcome to pktsniffer’s documentation!</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2026, Abdul Aleem Shaik Gadda.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.0.2</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/pktsniffer3.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
